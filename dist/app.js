@@ -14,6 +14,8 @@ const dotenvResult = dotenv_1.default.config();
 if (dotenvResult.error) {
     throw dotenvResult.error;
 }
+const users_routes_config_1 = require("./users/users.routes.config");
+const routes = [];
 const app = (0, express_1.default)();
 const port = 3000 || process.env.PORT;
 const debugLog = (0, debug_1.default)('app');
@@ -31,8 +33,11 @@ if (!process.env.DEBUG) {
 }
 // initialize the logger with the above configuration
 app.use(express_winston_1.default.logger(loggerOptions));
+routes.push(new users_routes_config_1.UserRoutes(app));
 const runningMessage = `Server running at http://localhost:${port}`;
 app.listen(port, () => {
-    debugLog("server is running");
+    routes.forEach((route) => {
+        debugLog(`Routes configured for ${route.getName()}`);
+    });
     console.log(runningMessage);
 });

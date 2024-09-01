@@ -9,6 +9,10 @@ const dotenvResult = dotenv.config();
 if (dotenvResult.error) {
     throw dotenvResult.error;
 }
+import { CommonRoutesConfig } from './common/common.routes.config';
+import { UserRoutes } from './users/users.routes.config';
+
+const routes: Array<CommonRoutesConfig> = []
 const app: express.Application = express()
 const port = 3000 || process.env.PORT
 const debugLog: debug.IDebugger = debug('app')
@@ -36,9 +40,15 @@ if (!process.env.DEBUG) {
 // initialize the logger with the above configuration
 app.use(expressWinston.logger(loggerOptions));
 
+
+routes.push(new UserRoutes(app));
+
+
 const runningMessage = `Server running at http://localhost:${port}`;
 app.listen(port, () => {
-    debugLog("server is running")
+    routes.forEach((route: CommonRoutesConfig) => {
+        debugLog(`Routes configured for ${route.getName()}`);
+    });
     console.log(runningMessage)
 
 })
