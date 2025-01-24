@@ -2,31 +2,64 @@
 const Customer = require("../models/customer.model");
 const XlsxPopulate = require("xlsx-populate");
 
+const DEFAULT_PAGE = 1;
+const DEFAULT_LIMIT = 10;
+const ALLOWED_SEARCH_FIELDS = ["name", "phone", "residence"]; // Fields allowed for searching
+
 exports.getCustomers = async (req, res) => {
   try {
-    const { page = 1, limit = 10, searchBy, search } = req.query;
-    const skip = (page - 1) * limit;
+    let {
+      page = DEFAULT_PAGE,
+      rowsPerPage = DEFAULT_LIMIT,
+      searchField,
+      searchQuery,
+    } = req.query;
 
+    // Validate and parse page and limit
+    page = parseInt(page);
+    rowsPerPage = parseInt(rowsPerPage);
+    if (isNaN(page) || page < 1) page = DEFAULT_PAGE;
+    if (isNaN(rowsPerPage) || rowsPerPage < 1) rowsPerPage = DEFAULT_LIMIT;
+
+    const skip = (page - 1) * rowsPerPage;
+
+    // Build the query
     let query = {};
-    if (search) {
-      query = { [searchBy]: { $regex: search, $options: "i" } };
+    if (
+      searchQuery &&
+      searchField &&
+      ALLOWED_SEARCH_FIELDS.includes(searchField)
+    ) {
+      if (searchField === "phone") {
+        query[searchField] = {
+          $elemMatch: { $toString: { $eq: searchQuery.toString() } },
+        };
+      } else {
+        query[searchField] = { $regex: searchQuery, $options: "i" };
+      }
     }
 
-    const customers = await Customer.find(query)
-      .skip(skip)
-      .limit(parseInt(limit))
-      .select("-password"); // Exclude password from results
+    // Fetch customers
+    const customers = await Customer.find(query).skip(skip).limit(rowsPerPage);
 
+    // Get total count of matching customers
     const total = await Customer.countDocuments(query);
 
+    // Calculate total pages
+    const totalPages = Math.ceil(total / rowsPerPage);
+
+    // Send response
     res.json({
       customers,
-      currentPage: parseInt(page),
-      totalPages: Math.ceil(total / limit),
+      currentPage: page,
+      totalPages,
       totalCustomers: total,
     });
   } catch (error) {
-    res.status(500).json({ message: "Error fetching customers", error });
+    console.error("Error fetching customers:", error);
+    res
+      .status(500)
+      .json({ message: "Error fetching customers", error: error.message });
   }
 };
 
@@ -68,6 +101,11 @@ exports.exportCustomersToExcel = async (req, res) => {
     // Fetch customers with sorting
     const customers = await Customer.find();
 
+    // Check if there are customers to export
+    if (customers.length === 0) {
+      return res.status(404).json({ message: "No customers found to export" });
+    }
+
     // Create a new workbook
     const workbook = await XlsxPopulate.fromBlankAsync();
     const sheet = workbook.sheet(0);
@@ -75,13 +113,13 @@ exports.exportCustomersToExcel = async (req, res) => {
     // Styling
     const headerStyle = {
       bold: true,
-      fill: "4F81BD",
-      fontColor: "ffffff",
-      horizontalAlignment: "center",
+      fill: "4F81BD", // Blue background for headers
+      fontColor: "ffffff", // White text color
+      horizontalAlignment: "center", // Center-align headers
     };
 
     const borderStyle = {
-      border: true,
+      border: true, // Add borders to all cells
     };
 
     // Define columns with their properties
@@ -96,14 +134,13 @@ exports.exportCustomersToExcel = async (req, res) => {
     // Add headers and set column widths
     columns.forEach((col, i) => {
       const cell = sheet.cell(1, i + 1);
-      cell.value(col.header).style(headerStyle);
-
-      sheet.column(i + 1).width(col.width);
+      cell.value(col.header).style(headerStyle); // Apply header style
+      sheet.column(i + 1).width(col.width); // Set column width
     });
 
     // Add data with formatting
     customers.forEach((customer, rowIndex) => {
-      const rowNum = rowIndex + 2;
+      const rowNum = rowIndex + 2; // Start from row 2 (row 1 is headers)
 
       columns.forEach((col, colIndex) => {
         const cell = sheet.cell(rowNum, colIndex + 1);
@@ -111,16 +148,12 @@ exports.exportCustomersToExcel = async (req, res) => {
 
         // Format specific types of data
         if (col.key === "_id") {
-          value = value.toString();
-        } else if (col.key === "phone") {
-          value = value.join(", ");
+          value = value.toString(); // Convert ObjectId to string
+        } else if (col.key === "phone" && Array.isArray(value)) {
+          value = value.join(", "); // Join phone numbers with a comma
         }
 
-        cell.value(value || "").style(borderStyle);
-
-        if (col.style) {
-          cell.style(col.style);
-        }
+        cell.value(value || "").style(borderStyle); // Set cell value and apply border style
       });
     });
 
@@ -128,29 +161,34 @@ exports.exportCustomersToExcel = async (req, res) => {
     sheet.range(1, 1, 1, columns.length).autoFilter();
 
     // Freeze the header row
-    sheet.row(1).freeze();
+    sheet.freezePanes(2, 1); // Freeze the first row (header row)
 
     // Add summary at the bottom
-    const lastRow = customers.length + 3;
-    sheet.cell(lastRow, 1).value("عدد العملاء").style({ bold: true });
-
-    sheet.cell(lastRow, 2).value(customers.length).style({ bold: true });
+    const lastRow = customers.length + 3; // Position for summary
+    sheet.cell(lastRow, 1).value("عدد العملاء").style({ bold: true }); // Add summary label
+    sheet.cell(lastRow, 2).value(customers.length).style({ bold: true }); // Add total count
 
     // Generate filename with timestamp
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-    const filename = `معلومات العملاء${timestamp}.xlsx`;
+    const filename = `معلومات العملاء_${timestamp}.xlsx`;
 
     // Generate buffer
     const buffer = await workbook.outputAsync();
 
-    // Set headers
+    // Set headers for file download
     res.setHeader(
       "Content-Type",
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     );
-    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
 
-    // Send response
+    // Encode the filename for the Content-Disposition header
+    const encodedFilename = encodeURIComponent(filename);
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename*=UTF-8''${encodedFilename}`
+    );
+
+    // Send the Excel file as a response
     res.send(buffer);
   } catch (error) {
     console.error("Export error:", error);
@@ -163,14 +201,6 @@ exports.exportCustomersToExcel = async (req, res) => {
 
 exports.importCustomersFromExcel = async (req, res) => {
   try {
-    // Handle file upload
-    await new Promise((resolve, reject) => {
-      upload(req, res, (err) => {
-        if (err) reject(err);
-        else resolve();
-      });
-    });
-
     if (!req.file) {
       return res.status(400).json({ message: "Please upload an Excel file" });
     }

@@ -1,18 +1,30 @@
-// server.js
 const express = require("express");
 const mongoose = require("mongoose");
 const bodyParser = require("body-parser");
-require("dotenv").config();
+const cors = require("cors");
+const dotenv = require("dotenv");
+const morgan = require("morgan"); // For logging HTTP requests
+const helmet = require("helmet"); // For securing HTTP headers
 
+// Load environment variables
+dotenv.config();
+
+// Import routes
 const accountRoutes = require("./routes/account.routes");
 const customerRoutes = require("./routes/customer.routes");
 
+// Initialize Express app
 const app = express();
 
 // Middleware
-app.use(bodyParser.json());
-app.use(accountRoutes);
-app.use(customerRoutes);
+app.use(cors()); // Enable CORS
+app.use(helmet()); // Secure HTTP headers
+app.use(bodyParser.json()); // Parse JSON request bodies
+app.use(morgan("dev")); // Log HTTP requests in development mode
+
+// Routes
+app.use("/api", accountRoutes); // Prefix all account routes with /api/accounts
+app.use("/api", customerRoutes); // Prefix all customer routes with /api/customers
 
 // MongoDB Connection
 const connectDB = async () => {
@@ -29,12 +41,21 @@ const connectDB = async () => {
       code: error.code,
       stack: error.stack,
     });
-    process.exit(1);
+    process.exit(1); // Exit the process if the connection fails
   }
 };
 
+// Connect to MongoDB
 connectDB();
+
+// Error Handling Middleware
+app.use((err, req, res, next) => {
+  console.error("Error:", err.stack);
+  res.status(500).json({ message: "Internal Server Error" });
+});
 
 // Start Server
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});

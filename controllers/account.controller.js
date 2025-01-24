@@ -3,35 +3,76 @@ const Account = require("../models/account.model");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
 
+const DEFAULT_PAGE = 1;
+const DEFAULT_LIMIT = 10;
+const ALLOWED_SEARCH_FIELDS = ["name", "_id", "username"]; // Fields allowed for searching
+
 exports.getAccounts = async (req, res) => {
   try {
-    const { page = 1, limit = 10, searchBy, search } = req.query;
-    const skip = (page - 1) * limit;
+    let {
+      page = DEFAULT_PAGE,
+      rowsPerPage = DEFAULT_LIMIT,
+      searchField,
+      searchQuery,
+      isSuperAdmin, // New parameter for filtering by isSuperAdmin
+    } = req.query;
 
+    // Validate and parse page and limit
+    page = parseInt(page);
+    rowsPerPage = parseInt(rowsPerPage);
+    if (isNaN(page) || page < 1) page = DEFAULT_PAGE;
+    if (isNaN(rowsPerPage) || rowsPerPage < 1) rowsPerPage = DEFAULT_LIMIT;
+
+    const skip = (page - 1) * rowsPerPage;
+
+    // Build the query
     let query = {};
-    if (search) {
-      query =
-        searchBy === "name"
-          ? { name: { $regex: search, $options: "i" } }
-          : { _id: { $regex: search, $options: "i" } };
+
+    // Add search query if searchField and searchQuery are provided
+    if (
+      searchQuery &&
+      searchField &&
+      ALLOWED_SEARCH_FIELDS.includes(searchField)
+    ) {
+      const searchQueryString = searchQuery.toString();
+      query[searchField] = { $regex: searchQueryString, $options: "i" };
     }
 
+    // Add isSuperAdmin filter if provided
+    if (isSuperAdmin !== undefined && isSuperAdmin !== "all") {
+      query.isSuperAdmin = isSuperAdmin === "true"; // Convert string to boolean
+    }
+
+    // Fetch accounts
     const accounts = await Account.find(query)
       .skip(skip)
-      .limit(parseInt(limit))
+      .limit(rowsPerPage)
       .select("-password"); // Exclude password from results
 
+    // Get total count of matching accounts
     const total = await Account.countDocuments(query);
 
+    // Calculate total pages
+    const totalPages = Math.ceil(total / rowsPerPage);
+
+    // Send response
     res.json({
       accounts,
-      currentPage: parseInt(page),
-      totalPages: Math.ceil(total / limit),
+      currentPage: page,
+      totalPages,
       totalAccounts: total,
     });
   } catch (error) {
-    res.status(500).json({ message: "Error fetching accounts", error });
+    console.error("Error fetching accounts:", error);
+    res
+      .status(500)
+      .json({ message: "Error fetching accounts", error: error.message });
   }
+};
+//get account from token
+exports.getAccountFromToken = async (req, res) => {
+  const user = req.user;
+  res.json(user);
 };
 
 // User login
@@ -39,6 +80,7 @@ exports.login = async (req, res) => {
   const { username, password } = req.body;
   try {
     const account = await Account.findOne({ username });
+    console.log(account);
     if (!account || !(await account.isPasswordMatch(password))) {
       return res.status(401).json({ message: "Invalid credentials" });
     }
@@ -117,8 +159,12 @@ exports.updateAccount = async (req, res) => {
 // Delete an account
 exports.deleteAccount = async (req, res) => {
   try {
-    await Account.findByIdAndDelete(req.params.id);
-    res.json({ message: "Account deleted" });
+    const currentUser = req.user;
+    if (currentUser._id === req.params.id || currentUser.isSuperAdmin) {
+      await Account.findByIdAndDelete(req.params.id);
+      return res.json({ message: "Account deleted" });
+    }
+    return res.sendStatus(403);
   } catch (error) {
     res.status(500).json({ message: "Error deleting account", error });
   }

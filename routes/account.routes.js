@@ -6,6 +6,7 @@ const {
   deleteAccount,
   updateAccount,
   getAccounts,
+  getAccountFromToken,
 } = require("../controllers/account.controller");
 const {
   verifyToken,
@@ -20,6 +21,7 @@ router.get("/accounts", verifyToken, verifySuperAdmin, getAccounts);
 // Login route
 router.post("/login", login);
 
+router.get("/account", verifyToken, getAccountFromToken);
 //update account
 router.patch("/accounts/:id", verifyToken, updateAccount);
 
