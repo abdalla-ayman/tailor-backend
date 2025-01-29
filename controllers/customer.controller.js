@@ -37,8 +37,8 @@ exports.getCustomers = async (req, res) => {
       } else {
         query[searchField] = { $regex: searchQuery, $options: "i" };
       }
-    } else if (searchQuery == "_id") {
-      query = { _id: parseInt(searchField) };
+    } else if (searchField == "_id") {
+      query = { _id: parseInt(searchQuery) };
     }
 
     // Fetch customers

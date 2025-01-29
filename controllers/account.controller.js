@@ -36,8 +36,8 @@ exports.getAccounts = async (req, res) => {
     ) {
       const searchQueryString = searchQuery.toString();
       query[searchField] = { $regex: searchQueryString, $options: "i" };
-    } else if (searchQuery == "_id") {
-      query = { _id: parseInt(searchField) };
+    } else if (searchField == "_id") {
+      query = { _id: parseInt(searchQuery) };
     }
     if (isSuperAdmin !== undefined && isSuperAdmin !== "all") {
       // Add isSuperAdmin filter if provided
