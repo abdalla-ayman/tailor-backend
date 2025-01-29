@@ -5,7 +5,7 @@ const bcrypt = require("bcryptjs");
 
 const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 10;
-const ALLOWED_SEARCH_FIELDS = ["name", "_id", "username"]; // Fields allowed for searching
+const ALLOWED_SEARCH_FIELDS = ["name", "username"]; // Fields allowed for searching
 
 exports.getAccounts = async (req, res) => {
   try {
@@ -36,10 +36,11 @@ exports.getAccounts = async (req, res) => {
     ) {
       const searchQueryString = searchQuery.toString();
       query[searchField] = { $regex: searchQueryString, $options: "i" };
+    } else if (searchQuery == "_id") {
+      query = { _id: parseInt(searchField) };
     }
-
-    // Add isSuperAdmin filter if provided
     if (isSuperAdmin !== undefined && isSuperAdmin !== "all") {
+      // Add isSuperAdmin filter if provided
       query.isSuperAdmin = isSuperAdmin === "true"; // Convert string to boolean
     }
 
