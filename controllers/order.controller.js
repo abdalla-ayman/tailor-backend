@@ -77,11 +77,6 @@ exports.updateOrder = async (req, res) => {
         .json({ message: "Cannot update a delivered order" });
     }
 
-    // Prevent changing customerId
-    if (req.body.customerId && req.body.customerId !== order.customerId) {
-      return res.status(400).json({ message: "Customer ID cannot be changed" });
-    }
-
     if (amountDue !== undefined) order.amountDue = amountDue;
     if (status) order.status = status;
     order.items = items;
