@@ -1,10 +1,9 @@
-// controllers/customer.controller.js
 const Customer = require("../models/customer.model");
 const XlsxPopulate = require("xlsx-populate");
 
 const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 10;
-const ALLOWED_SEARCH_FIELDS = ["name", "phone", "residence"]; // Fields allowed for searching
+const ALLOWED_SEARCH_FIELDS = ["name", "phone", "residence"];
 
 exports.getCustomers = async (req, res) => {
   try {
@@ -15,7 +14,6 @@ exports.getCustomers = async (req, res) => {
       searchQuery,
     } = req.query;
 
-    // Validate and parse page and limit
     page = parseInt(page);
     rowsPerPage = parseInt(rowsPerPage);
     if (isNaN(page) || page < 1) page = DEFAULT_PAGE;
@@ -23,7 +21,6 @@ exports.getCustomers = async (req, res) => {
 
     const skip = (page - 1) * rowsPerPage;
 
-    // Build the query
     let query = {};
     if (
       searchQuery &&
@@ -32,25 +29,19 @@ exports.getCustomers = async (req, res) => {
     ) {
       if (searchField === "phone") {
         query[searchField] = {
-          $elemMatch: { $toString: { $eq: searchQuery.toString() } },
+          $elemMatch: { $regex: searchQuery, $options: "i" },
         };
       } else {
         query[searchField] = { $regex: searchQuery, $options: "i" };
       }
-    } else if (searchField == "_id") {
+    } else if (searchField === "_id") {
       query = { _id: parseInt(searchQuery) };
     }
 
-    // Fetch customers
     const customers = await Customer.find(query).skip(skip).limit(rowsPerPage);
-
-    // Get total count of matching customers
     const total = await Customer.countDocuments(query);
-
-    // Calculate total pages
     const totalPages = Math.ceil(total / rowsPerPage);
 
-    // Send response
     res.json({
       customers,
       currentPage: page,
@@ -67,34 +58,89 @@ exports.getCustomers = async (req, res) => {
 
 exports.createCustomer = async (req, res) => {
   try {
-    const { name } = req.user; // Admin's name from token
-    const customer = await Customer.create({ ...req.body, createdBy: name });
+    const { name } = req.user;
+    const customerData = {
+      ...req.body,
+      createdBy: name,
+    };
+
+    // Ensure measurements are properly structured
+    if (customerData.measurements) {
+      const validDressTypes = ["jalabya", "aragi", "pants", "alalla"];
+      validDressTypes.forEach((dressType) => {
+        if (customerData.measurements[dressType]) {
+          const measurements = customerData.measurements[dressType];
+          // Remove any undefined or null values
+          Object.keys(measurements).forEach((key) => {
+            if (measurements[key] === undefined || measurements[key] === null) {
+              delete measurements[key];
+            }
+          });
+        }
+      });
+    }
+
+    const customer = await Customer.create(customerData);
     res.status(201).json(customer);
   } catch (error) {
-    res.status(400).json({ message: "Error creating customer", error });
+    res
+      .status(400)
+      .json({ message: "Error creating customer", error: error.message });
   }
 };
 
 exports.updateCustomer = async (req, res) => {
   try {
-    const { name } = req.user; // Admin's name from token
+    const { name } = req.user;
+    const customerData = {
+      ...req.body,
+      updatedBy: name,
+    };
+
+    // Handle measurements updates
+    if (customerData.measurements) {
+      const validDressTypes = ["jalabya", "aragi", "pants", "alalla"];
+      validDressTypes.forEach((dressType) => {
+        if (customerData.measurements[dressType]) {
+          const measurements = customerData.measurements[dressType];
+          Object.keys(measurements).forEach((key) => {
+            if (measurements[key] === undefined || measurements[key] === null) {
+              delete measurements[key];
+            }
+          });
+        }
+      });
+    }
+
     const customer = await Customer.findByIdAndUpdate(
       req.params.id,
-      { ...req.body, updatedBy: name },
+      customerData,
       { new: true }
     );
+
+    if (!customer) {
+      return res.status(404).json({ message: "Customer not found" });
+    }
+
     res.json(customer);
   } catch (error) {
-    res.status(400).json({ message: "Error updating customer", error });
+    res
+      .status(400)
+      .json({ message: "Error updating customer", error: error.message });
   }
 };
 
 exports.deleteCustomer = async (req, res) => {
   try {
-    await Customer.findByIdAndDelete(req.params.id);
-    res.json({ message: "Customer deleted" });
+    const customer = await Customer.findByIdAndDelete(req.params.id);
+    if (!customer) {
+      return res.status(404).json({ message: "Customer not found" });
+    }
+    res.json({ message: "Customer deleted successfully" });
   } catch (error) {
-    res.status(500).json({ message: "Error deleting customer", error });
+    res
+      .status(500)
+      .json({ message: "Error deleting customer", error: error.message });
   }
 };
 
@@ -120,72 +166,99 @@ exports.exportCustomersToExcel = async (req, res) => {
       border: true,
     };
 
-    // Updated columns definition with new measurement fields
-    const columns = [
+    // Define columns for each dress type
+    const baseColumns = [
       { header: "الرقم التعريفي", key: "_id", width: 15 },
       { header: "الاسم", key: "name", width: 20 },
       { header: "الهاتف", key: "phone", width: 25 },
       { header: "السكن", key: "residence", width: 25 },
-      { header: "الطول", key: "length", width: 15 },
-      { header: "عرض الكتف", key: "shouldersWidth", width: 15 },
-      { header: "طول الكم", key: "sleeveLength", width: 15 },
-      { header: "عرض الكم الاعلى", key: "upperSleeveWidth", width: 15 },
-      { header: "عرض الكم الأسفل", key: "lowerSleeveWidth", width: 15 },
-      { header: "الجمبات فوق", key: "upperSides", width: 15 },
-      { header: "الجمبات تحت", key: "lowerSides", width: 15 },
-      { header: "طول السروال", key: "pantsLength", width: 15 },
-      { header: "عرض السروال", key: "pantsWidth", width: 15 },
-      { header: "ملاحظات", key: "notes", width: 30 },
     ];
 
-    // Add headers and set column widths
-    columns.forEach((col, i) => {
-      const cell = sheet.cell(1, i + 1);
-      cell.value(col.header).style(headerStyle);
-      sheet.column(i + 1).width(col.width);
+    const dressTypes = ["jalabya", "aragi", "pants", "alalla"];
+    let currentColumn = 5;
+
+    // Add headers for each dress type
+    dressTypes.forEach((dressType) => {
+      sheet
+        .cell(1, currentColumn)
+        .value(`قياسات ${dressType}`)
+        .style(headerStyle);
+
+      const measurements =
+        dressType === "pants"
+          ? [
+              { header: "طول السروال", key: "pantsLength" },
+              { header: "عرض السروال", key: "pantsWidth" },
+            ]
+          : [
+              { header: "الطول", key: "length" },
+              { header: "عرض الكتف", key: "shouldersWidth" },
+              { header: "طول الكم", key: "sleeveLength" },
+              { header: "عرض الكم الاعلى", key: "upperSleeveWidth" },
+              { header: "عرض الكم الأسفل", key: "lowerSleeveWidth" },
+              { header: "الجمبات فوق", key: "upperSides" },
+              { header: "الجمبات تحت", key: "lowerSides" },
+            ];
+
+      measurements.forEach((measurement, index) => {
+        sheet
+          .cell(2, currentColumn + index)
+          .value(measurement.header)
+          .style(headerStyle);
+      });
+
+      if (dressType === "alalla") {
+        const pantsHeaders = [
+          { header: "طول السروال", key: "pantsLength" },
+          { header: "عرض السروال", key: "pantsWidth" },
+        ];
+        pantsHeaders.forEach((header, index) => {
+          sheet
+            .cell(2, currentColumn + measurements.length + index)
+            .value(header.header)
+            .style(headerStyle);
+        });
+      }
+
+      currentColumn += measurements.length + (dressType === "alalla" ? 2 : 0);
     });
 
-    // Add data with formatting
+    // Add data
     customers.forEach((customer, rowIndex) => {
-      const rowNum = rowIndex + 2;
+      const rowNum = rowIndex + 3;
 
-      columns.forEach((col, colIndex) => {
-        const cell = sheet.cell(rowNum, colIndex + 1);
+      // Base information
+      baseColumns.forEach((col, colIndex) => {
         let value = customer[col.key];
-
-        // Special formatting for specific fields
-        if (col.key === "_id") {
-          value = value.toString();
-        } else if (col.key === "phone" && Array.isArray(value)) {
+        if (col.key === "phone" && Array.isArray(value)) {
           value = value.join(", ");
-        } else if (
-          [
-            "length",
-            "shouldersWidth",
-            "sleeveLength",
-            "upperSleeveWidth",
-            "lowerSleeveWidth",
-            "upperSides",
-            "lowerSides",
-            "pantsLength",
-            "pantsWidth",
-          ].includes(col.key)
-        ) {
-          // Format numbers with 1 decimal place if they exist
-          value = value ? Number(value).toFixed(1) : "";
         }
+        sheet
+          .cell(rowNum, colIndex + 1)
+          .value(value)
+          .style(borderStyle);
+      });
 
-        cell.value(value || "").style(borderStyle);
+      // Add measurements for each dress type
+      let colOffset = baseColumns.length + 1;
+      dressTypes.forEach((dressType) => {
+        if (customer.measurements && customer.measurements[dressType]) {
+          const measurements = customer.measurements[dressType];
+          Object.values(measurements).forEach((value, index) => {
+            if (typeof value === "number") {
+              sheet
+                .cell(rowNum, colOffset + index)
+                .value(Number(value).toFixed(1))
+                .style(borderStyle);
+            }
+          });
+        }
+        colOffset += dressType === "pants" ? 2 : dressType === "alalla" ? 9 : 7;
       });
     });
 
-    sheet.range(1, 1, 1, columns.length).autoFilter();
-    sheet.freezePanes(2, 1);
-
-    // Add summary
-    const lastRow = customers.length + 3;
-    sheet.cell(lastRow, 1).value("عدد العملاء").style({ bold: true });
-    sheet.cell(lastRow, 2).value(customers.length).style({ bold: true });
+    // Formatting
+    sheet.freezePanes(3, 1);
 
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
     const filename = `معلومات العملاء_${timestamp}.xlsx`;
@@ -205,143 +278,6 @@ exports.exportCustomersToExcel = async (req, res) => {
     console.error("Export error:", error);
     res.status(500).json({
       message: "Error exporting customers",
-      error: error.message,
-    });
-  }
-};
-
-exports.importCustomersFromExcel = async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ message: "Please upload an Excel file" });
-    }
-
-    const workbook = await XlsxPopulate.fromDataAsync(req.file.buffer);
-    const sheet = workbook.sheet(0);
-
-    // Updated expected headers mapping
-    const expectedHeaders = {
-      الاسم: "name",
-      الهاتف: "phone",
-      السكن: "residence",
-      الطول: "length",
-      "عرض الكتف": "shouldersWidth",
-      "طول الكم": "sleeveLength",
-      "عرض الكم الاعلى": "upperSleeveWidth",
-      "عرض الكم الأسفل": "lowerSleeveWidth",
-      "الجمبات فوق": "upperSides",
-      "الجمبات تحت": "lowerSides",
-      "طول السروال": "pantsLength",
-      "عرض السروال": "pantsWidth",
-      ملاحظات: "notes",
-    };
-
-    // Validate headers
-    const headerRow = sheet.row(1);
-    const headers = headerRow.cells().map((cell) => cell.value());
-
-    const requiredHeaders = ["الاسم", "الهاتف", "السكن"]; // Only these are required
-    for (const header of requiredHeaders) {
-      if (!headers.includes(header)) {
-        return res.status(400).json({
-          message: `Missing required column: ${header}`,
-        });
-      }
-    }
-
-    // Get column indexes
-    const columnIndexes = {};
-    headers.forEach((header, index) => {
-      if (expectedHeaders[header]) {
-        columnIndexes[expectedHeaders[header]] = index;
-      }
-    });
-
-    // Process data rows
-    const customers = [];
-    const errors = [];
-    const usedRange = sheet.usedRange();
-    const rowCount = usedRange.endCell().rowNumber();
-
-    for (let rowNumber = 2; rowNumber <= rowCount; rowNumber++) {
-      const row = sheet.row(rowNumber);
-
-      try {
-        if (row.cells().every((cell) => !cell.value())) continue;
-
-        const customer = {
-          name: row.cell(columnIndexes.name + 1).value(),
-          phone: row.cell(columnIndexes.phone + 1).value(),
-          residence: row.cell(columnIndexes.residence + 1).value(),
-          createdBy: req.user.name,
-        };
-
-        // Add measurement fields if they exist in the Excel
-        for (const [arabicHeader, englishKey] of Object.entries(
-          expectedHeaders
-        )) {
-          if (
-            englishKey !== "name" &&
-            englishKey !== "phone" &&
-            englishKey !== "residence" &&
-            columnIndexes[englishKey] !== undefined
-          ) {
-            const value = row.cell(columnIndexes[englishKey] + 1).value();
-            if (value !== null && value !== undefined) {
-              if (englishKey === "notes") {
-                customer[englishKey] = value.toString();
-              } else if (englishKey !== "phone") {
-                // Convert measurements to numbers
-                customer[englishKey] = Number(value) || null;
-              }
-            }
-          }
-        }
-
-        // Validate required fields
-        if (!customer.name) {
-          throw new Error("Name is required");
-        }
-
-        // Process phone numbers
-        if (typeof customer.phone === "string") {
-          customer.phone = customer.phone.split(",").map((p) => p.trim());
-        } else if (!Array.isArray(customer.phone)) {
-          customer.phone = [customer.phone.toString()];
-        }
-
-        customer.phone = customer.phone.filter((p) => p && p.length > 0);
-        if (customer.phone.length === 0) {
-          throw new Error("At least one valid phone number is required");
-        }
-
-        customers.push(customer);
-      } catch (error) {
-        errors.push({
-          row: rowNumber,
-          error: error.message,
-        });
-      }
-    }
-
-    if (errors.length > 0) {
-      return res.status(400).json({
-        message: "Validation errors in Excel file",
-        errors,
-      });
-    }
-
-    const result = await Customer.insertMany(customers, { ordered: false });
-
-    res.json({
-      message: "Customers imported successfully",
-      imported: result.length,
-      total: customers.length,
-    });
-  } catch (error) {
-    console.error("Import error:", error);
-    res.status(500).json({
-      message: "Error importing customers",
       error: error.message,
     });
   }

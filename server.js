@@ -12,6 +12,7 @@ dotenv.config();
 // Import routes
 const accountRoutes = require("./routes/account.routes");
 const customerRoutes = require("./routes/customer.routes");
+const orderRoutes = require("./routes/order.routes");
 
 // Initialize Express app
 const app = express();
@@ -24,7 +25,8 @@ app.use(morgan("dev")); // Log HTTP requests in development mode
 
 // Routes
 app.use("/api", accountRoutes); // Prefix all account routes with /api/accounts
-app.use("/api", customerRoutes); // Prefix all customer routes with /api/customers
+app.use("/api/customers", customerRoutes); // Prefix all customer routes with /api/customers
+app.use("/api/orders", orderRoutes); // Prefix all order routes with /api/orders
 
 // MongoDB Connection
 const connectDB = async () => {

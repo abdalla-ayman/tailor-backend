@@ -27,22 +27,17 @@ const handleUpload = (req, res, next) => {
   });
 };
 
-router.get("/customers", verifyToken, getCustomers);
-router.post("/customers", verifyToken, createCustomer);
-router.put("/customers/:id", verifyToken, updateCustomer);
-router.delete("/customers/:id", verifyToken, deleteCustomer);
+router.get("/", verifyToken, getCustomers);
+router.post("/", verifyToken, createCustomer);
+router.put("/:id", verifyToken, updateCustomer);
+router.delete("/:id", verifyToken, deleteCustomer);
 router.post(
-  "/customers/import",
+  "/import",
   verifyToken,
   verifySuperAdmin,
   handleUpload, // Use the error-handling wrapper
   importCustomersFromExcel
 );
-router.get(
-  "/customers/export",
-  verifyToken,
-  verifySuperAdmin,
-  exportCustomersToExcel
-);
+router.get("/export", verifyToken, verifySuperAdmin, exportCustomersToExcel);
 
 module.exports = router;
