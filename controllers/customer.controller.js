@@ -56,6 +56,20 @@ exports.getCustomers = async (req, res) => {
   }
 };
 
+exports.getCustomerById = async (req, res) => {
+  try {
+    const customer = await Customer.findById(req.params.id);
+    if (!customer) {
+      return res.status(404).json({ message: "Customer not found" });
+    }
+    res.json(customer);
+  } catch (error) {
+    res
+      .status(500)
+      .json({ message: "Error fetching customer", error: error.message });
+  }
+};
+
 exports.createCustomer = async (req, res) => {
   try {
     const { name } = req.user;

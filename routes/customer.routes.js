@@ -4,6 +4,7 @@ const {
   updateCustomer,
   deleteCustomer,
   getCustomers,
+  getCustomerById,
   importCustomersFromExcel,
   exportCustomersToExcel,
 } = require("../controllers/customer.controller");
@@ -27,7 +28,10 @@ const handleUpload = (req, res, next) => {
   });
 };
 
+// Handle the routes
+
 router.get("/", verifyToken, getCustomers);
+router.get("/:id", verifyToken, getCustomerById);
 router.post("/", verifyToken, createCustomer);
 router.put("/:id", verifyToken, updateCustomer);
 router.delete("/:id", verifyToken, deleteCustomer);
