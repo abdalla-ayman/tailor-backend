@@ -29,9 +29,14 @@ const OrderItemSchema = new mongoose.Schema({
     required: true,
     enum: Object.values(DRESS_TYPES),
   },
+  count: {
+    type: Number,
+    required: true,
+    default: 1,
+    min: 1,
+  },
   fabric: {
     type: String,
-    required: true,
   },
   notes: {
     type: String,
@@ -48,12 +53,12 @@ const OrderItemSchema = new mongoose.Schema({
 const OrderSchema = new mongoose.Schema(
   {
     _id: { type: Number }, // Auto-incremental ID
-    customerId: {
+    customer: {
       type: Number,
       ref: "Customer",
       required: true,
     },
-    accountId: {
+    account: {
       type: Number,
       ref: "Account", // Assuming you have an Account model
       required: true,
@@ -62,6 +67,7 @@ const OrderSchema = new mongoose.Schema(
       type: Number,
       required: true,
       min: 0,
+      default: 0,
     },
     status: {
       type: String,

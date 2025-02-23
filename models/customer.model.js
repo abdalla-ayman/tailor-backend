@@ -37,11 +37,6 @@ const CustomerSchema = new mongoose.Schema(
       },
     },
 
-    notes: {
-      type: Map,
-      of: String, // Allows notes for each dress type
-    },
-
     createdBy: { type: String, required: true },
     updatedBy: { type: String },
   },

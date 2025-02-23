@@ -3,7 +3,7 @@ const XlsxPopulate = require("xlsx-populate");
 
 const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 10;
-const ALLOWED_SEARCH_FIELDS = ["name", "phone", "residence"];
+const ALLOWED_SEARCH_FIELDS = ["id", "name", "phone", "residence"];
 
 exports.getCustomers = async (req, res) => {
   try {
@@ -34,7 +34,11 @@ exports.getCustomers = async (req, res) => {
       } else {
         query[searchField] = { $regex: searchQuery, $options: "i" };
       }
-    } else if (searchField === "_id") {
+    } else if (
+      searchField === "_id" &&
+      searchQuery.trim() !== "" &&
+      !isNaN(searchQuery)
+    ) {
       query = { _id: parseInt(searchQuery) };
     }
 

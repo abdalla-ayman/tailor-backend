@@ -36,9 +36,14 @@ exports.getAccounts = async (req, res) => {
     ) {
       const searchQueryString = searchQuery.toString();
       query[searchField] = { $regex: searchQueryString, $options: "i" };
-    } else if (searchField == "_id") {
+    } else if (
+      searchField === "_id" &&
+      searchQuery.trim() !== "" &&
+      !isNaN(searchQuery)
+    ) {
       query = { _id: parseInt(searchQuery) };
     }
+
     if (isSuperAdmin !== undefined && isSuperAdmin !== "all") {
       // Add isSuperAdmin filter if provided
       query.isSuperAdmin = isSuperAdmin === "true"; // Convert string to boolean
